@@ -2,20 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { problems } from "@/data/problems";
-import { generatedProblems } from "@/data/generated100Problems";
-import { getGlobalLeaderboard, getProblemLeaderboard } from "@/lib/leaderboardService";
-import { Trophy, Clock, TrendingUp, Award, Zap, Target, Loader2 } from "lucide-react";
-
-// Combine all problems
-const allProblems = [...problems, ...generatedProblems];
+import { getGlobalLeaderboard } from "@/lib/leaderboardService";
+import { Trophy, Clock, Award, Loader2 } from "lucide-react";
 
 export default function LeaderboardPage() {
     const { user } = useAuth();
-    const [view, setView] = useState("global"); // global | problem
-    const [selectedProblemId, setSelectedProblemId] = useState(allProblems[0]?.id || "1");
     const [globalLeaderboard, setGlobalLeaderboard] = useState([]);
-    const [problemLeaderboard, setProblemLeaderboard] = useState([]);
     const [loading, setLoading] = useState(true);
     const [userRank, setUserRank] = useState(null);
     const [indexWarning, setIndexWarning] = useState(false);
@@ -26,13 +18,6 @@ export default function LeaderboardPage() {
         loadGlobalLeaderboard();
     }, []);
 
-    // Load problem leaderboard when problem changes
-    useEffect(() => {
-        if (view === "problem") {
-            loadProblemLeaderboard(selectedProblemId);
-        }
-    }, [view, selectedProblemId]);
-
     const loadGlobalLeaderboard = async () => {
         setLoading(true);
         setIndexWarning(false);
@@ -41,6 +26,7 @@ export default function LeaderboardPage() {
             console.log('🔄 Loading global leaderboard...');
             const data = await getGlobalLeaderboard(100);
             console.log('📊 Loaded', data.length, 'entries');
+            console.log('📊 First entry:', data[0]); // Debug: check data structure
             setGlobalLeaderboard(data);
             
             // Find current user's rank
@@ -65,26 +51,16 @@ export default function LeaderboardPage() {
     };
 
     const handleManualRefresh = () => {
-        if (view === 'global') {
-            loadGlobalLeaderboard();
-        } else {
-            loadProblemLeaderboard(selectedProblemId);
-        }
-    };
-
-    const loadProblemLeaderboard = async (problemId) => {
-        setLoading(true);
-        try {
-            const data = await getProblemLeaderboard(problemId, 50);
-            setProblemLeaderboard(data);
-        } catch (error) {
-            console.error('Error loading problem leaderboard:', error);
-        } finally {
-            setLoading(false);
-        }
+        loadGlobalLeaderboard();
     };
 
     const getRankBadge = (rank) => {
+        // Handle undefined or invalid rank
+        if (!rank || isNaN(rank)) {
+            console.warn('Invalid rank:', rank);
+            return <span className="text-muted-foreground font-mono text-sm">-</span>;
+        }
+        
         if (rank === 1) {
             return <Trophy size={20} className="text-yellow-500" />;
         } else if (rank === 2) {
@@ -94,8 +70,6 @@ export default function LeaderboardPage() {
         }
         return <span className="text-muted-foreground font-mono text-sm">#{rank}</span>;
     };
-
-    const currentLeaderboard = view === "global" ? globalLeaderboard : problemLeaderboard;
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -126,7 +100,7 @@ export default function LeaderboardPage() {
             {/* Header with User Rank */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground mb-2">Leaderboard</h1>
+                    <h1 className="text-3xl font-bold text-foreground mb-2">Global Leaderboard</h1>
                     <p className="text-muted-foreground">Top performing algorithms and strategists</p>
                     {user && userRank && (
                         <div className="mt-3 flex items-center gap-2 text-sm">
@@ -134,27 +108,6 @@ export default function LeaderboardPage() {
                             <span className="text-foreground">Your Rank: <span className="font-bold text-primary">#{userRank}</span></span>
                         </div>
                     )}
-                </div>
-
-                <div className="flex items-center gap-2 bg-muted p-1 rounded-lg border border-border">
-                    <button
-                        onClick={() => setView("global")}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${view === "global"
-                                ? "bg-background text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                    >
-                        Global Ranking
-                    </button>
-                    <button
-                        onClick={() => setView("problem")}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${view === "problem"
-                                ? "bg-background text-foreground shadow-sm"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                    >
-                        Per Problem
-                    </button>
                 </div>
 
                 <button
@@ -176,52 +129,12 @@ export default function LeaderboardPage() {
                 </button>
             </div>
 
-            {/* Scoring Info */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Target className="text-green-500" size={18} />
-                        <span className="text-sm font-semibold text-green-400">Easy Problems</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">1 Point</p>
-                </div>
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Zap className="text-yellow-500" size={18} />
-                        <span className="text-sm font-semibold text-yellow-400">Medium Problems</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">5 Points</p>
-                </div>
-                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="text-red-500" size={18} />
-                        <span className="text-sm font-semibold text-red-400">Hard Problems</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">10 Points</p>
-                </div>
-            </div>
-
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                {view === "problem" && (
-                    <div className="p-4 border-b border-border bg-muted/20 flex items-center gap-4">
-                        <label className="text-sm font-medium text-foreground">Select Problem:</label>
-                        <select
-                            className="bg-background border border-border rounded-md px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary"
-                            value={selectedProblemId}
-                            onChange={(e) => setSelectedProblemId(e.target.value)}
-                        >
-                            {allProblems.map(p => (
-                                <option key={p.id} value={p.id}>{p.title}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-
                 {loading ? (
                     <div className="flex items-center justify-center py-16">
                         <Loader2 className="animate-spin text-primary" size={32} />
                     </div>
-                ) : currentLeaderboard.length === 0 ? (
+                ) : globalLeaderboard.length === 0 ? (
                     <div className="text-center py-16 text-muted-foreground">
                         <Trophy size={48} className="mx-auto mb-4 opacity-50" />
                         <p>No submissions yet. Be the first!</p>
@@ -233,25 +146,14 @@ export default function LeaderboardPage() {
                                 <tr>
                                     <th className="py-4 px-6 w-20 text-center">Rank</th>
                                     <th className="py-4 px-6">User</th>
-                                    {view === "global" ? (
-                                        <>
-                                            <th className="py-4 px-6 text-right">Score</th>
-                                            <th className="py-4 px-6 text-right">Solved</th>
-                                            <th className="py-4 px-6 text-right">Wrong</th>
-                                            <th className="py-4 px-6 text-right">Avg Time</th>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <th className="py-4 px-6 text-right">Score</th>
-                                            <th className="py-4 px-6 text-right">Runtime</th>
-                                            <th className="py-4 px-6 text-right">Language</th>
-                                            <th className="py-4 px-6 text-right">Profit</th>
-                                        </>
-                                    )}
+                                    <th className="py-4 px-6 text-right">Score</th>
+                                    <th className="py-4 px-6 text-right">Solved</th>
+                                    <th className="py-4 px-6 text-right">Wrong</th>
+                                    <th className="py-4 px-6 text-right">Avg Time</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-border">
-                                {currentLeaderboard.map((entry) => {
+                                {globalLeaderboard.map((entry) => {
                                     const isCurrentUser = user && entry.userId === user.uid;
                                     return (
                                         <tr 
@@ -284,50 +186,19 @@ export default function LeaderboardPage() {
                                                     </span>
                                                 </div>
                                             </td>
-                                            {view === "global" ? (
-                                                <>
-                                                    <td className="py-4 px-6 text-right text-foreground font-mono font-bold">
-                                                        {entry.totalScore.toFixed(1)}
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right text-green-500 font-mono">
-                                                        {entry.problemsSolved}
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right text-red-400 font-mono">
-                                                        {entry.wrongSubmissions}
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right text-muted-foreground font-mono flex items-center justify-end gap-2">
-                                                        <Clock size={14} />
-                                                        {entry.avgRuntime}ms
-                                                    </td>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <td className="py-4 px-6 text-right text-foreground font-mono font-bold">
-                                                        {entry.score}%
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right text-muted-foreground font-mono">
-                                                        <div className="flex items-center justify-end gap-2">
-                                                            <Clock size={14} />
-                                                            {entry.runtime}ms
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right text-muted-foreground">
-                                                        <span className="px-2 py-1 bg-muted rounded text-xs font-mono">
-                                                            {entry.language}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-4 px-6 text-right font-mono">
-                                                        {entry.tradingMetrics?.totalPnL ? (
-                                                            <span className={entry.tradingMetrics.totalPnL > 0 ? 'text-green-500' : 'text-red-400'}>
-                                                                <TrendingUp size={14} className="inline mr-1" />
-                                                                ${entry.tradingMetrics.totalPnL.toFixed(2)}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-muted-foreground">N/A</span>
-                                                        )}
-                                                    </td>
-                                                </>
-                                            )}
+                                            <td className="py-4 px-6 text-right text-foreground font-mono font-bold">
+                                                {entry.totalScore.toFixed(1)}
+                                            </td>
+                                            <td className="py-4 px-6 text-right text-green-500 font-mono">
+                                                {entry.problemsSolved}
+                                            </td>
+                                            <td className="py-4 px-6 text-right text-red-400 font-mono">
+                                                {entry.wrongSubmissions}
+                                            </td>
+                                            <td className="py-4 px-6 text-right text-muted-foreground font-mono flex items-center justify-end gap-2">
+                                                <Clock size={14} />
+                                                {entry.avgRuntime}ms
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -335,18 +206,6 @@ export default function LeaderboardPage() {
                         </table>
                     </div>
                 )}
-            </div>
-
-            {/* Penalty Info */}
-            <div className="mt-6 bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-blue-400 mb-2">📊 Ranking System</h3>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• <strong>Primary:</strong> Total score (higher is better)</li>
-                    <li>• <strong>Tiebreaker 1:</strong> Wrong submissions (fewer is better)</li>
-                    <li>• <strong>Tiebreaker 2:</strong> Average runtime (faster is better)</li>
-                    <li>• <strong>Tiebreaker 3:</strong> Trading profit (higher is better)</li>
-                    <li>• <strong>Penalty:</strong> 10% score reduction per wrong submission</li>
-                </ul>
             </div>
         </div>
     );

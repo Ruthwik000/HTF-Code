@@ -226,7 +226,7 @@ export async function getGlobalLeaderboard(limitCount = 100) {
       });
       
       // Take only requested limit and add ranks
-      return data.slice(0, limitCount).map((entry, index) => ({
+      const result = data.slice(0, limitCount).map((entry, index) => ({
         rank: index + 1,
         userId: entry.id,
         username: entry.displayName || 'Anonymous',
@@ -238,6 +238,13 @@ export async function getGlobalLeaderboard(limitCount = 100) {
         wrongSubmissions: entry.wrongSubmissions || 0,
         updatedAt: entry.updatedAt
       }));
+      
+      console.log('✅ Processed leaderboard entries:', result.length);
+      if (result.length > 0) {
+        console.log('✅ First entry with rank:', result[0]);
+      }
+      
+      return result;
     }
   } catch (error) {
     console.error('Error fetching global leaderboard:', error);
@@ -251,7 +258,7 @@ function processLeaderboardSnapshot(snapshot) {
   
   snapshot.forEach((doc, index) => {
     const data = doc.data();
-    leaderboard.push({
+    const entry = {
       rank: index + 1,
       userId: doc.id,
       username: data.displayName || 'Anonymous',
@@ -262,8 +269,14 @@ function processLeaderboardSnapshot(snapshot) {
       totalProfit: data.totalProfit || 0,
       wrongSubmissions: data.wrongSubmissions || 0,
       updatedAt: data.updatedAt
-    });
+    };
+    leaderboard.push(entry);
   });
+  
+  console.log('✅ Processed snapshot entries:', leaderboard.length);
+  if (leaderboard.length > 0) {
+    console.log('✅ First snapshot entry with rank:', leaderboard[0]);
+  }
   
   return leaderboard;
 }

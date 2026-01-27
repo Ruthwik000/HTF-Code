@@ -34,7 +34,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto leading-relaxed">
-            The world's first competitive coding platform dedicated to quantitative finance, market microstructure, and algorithmic execution.
+            The world&apos;s first competitive coding platform dedicated to quantitative finance, market microstructure, and algorithmic execution.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -59,12 +59,10 @@ export default function LandingPage() {
           </div>
         </motion.div>
 
-        {/* Floating UI Elements Mockup */}
-        {/* Floating UI Elements with Container Scroll */}
         {/* Floating UI Elements with Container Scroll */}
         <div className="w-full relative z-10 -mt-20">
           <ContainerScroll
-            titleComponent={<></>} // Removed text as requested
+            titleComponent={<></>}
           >
             <div className="bg-[#0a0a0a] rounded-lg overflow-hidden border border-white/5 w-full h-full flex items-center justify-center">
               <div className="text-center w-full">

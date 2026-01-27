@@ -38,7 +38,7 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/problems">
+            <Link href="/signup">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -47,15 +47,15 @@ export default function LandingPage() {
                 Start Solving <ArrowRight size={18} />
               </motion.button>
             </Link>
-            <Link href="/blogs">
+            <a href="#features">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="px-8 py-3.5 rounded-lg bg-white/5 text-foreground font-semibold border border-white/10 hover:bg-white/10 transition-colors backdrop-blur-sm"
               >
-                Read Research
+                Know More
               </motion.button>
-            </Link>
+            </a>
           </div>
         </motion.div>
 
@@ -79,7 +79,7 @@ export default function LandingPage() {
       </section>
 
       {/* Features Grid */}
-      <section className="py-24 px-4 bg-muted/20">
+      <section id="features" className="py-24 px-4 bg-muted/20">
         <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold mb-4">Why HFTCode?</h2>

@@ -37,6 +37,9 @@ export default function Navbar() {
                     <Link href="/problems" className="hover:text-primary transition-colors hover:bg-white/5 py-2 px-3 rounded-md">
                         Problem Set
                     </Link>
+                    <Link href="/contest" className="hover:text-primary transition-colors hover:bg-white/5 py-2 px-3 rounded-md">
+                        Contest
+                    </Link>
                     <Link href="/leaderboard" className="hover:text-primary transition-colors hover:bg-white/5 py-2 px-3 rounded-md">
                         Leaderboard
                     </Link>
@@ -115,6 +118,7 @@ export default function Navbar() {
             {isMenuOpen && (
                 <div className="absolute top-16 left-0 right-0 bg-background border-b border-border p-4 md:hidden flex flex-col gap-2 shadow-xl animate-fade-up">
                     <Link href="/problems" onClick={() => setIsMenuOpen(false)} className="px-4 py-3 hover:bg-muted rounded-md text-sm font-medium">Problem Set</Link>
+                    <Link href="/contest" onClick={() => setIsMenuOpen(false)} className="px-4 py-3 hover:bg-muted rounded-md text-sm font-medium">Contest</Link>
                     <Link href="/leaderboard" onClick={() => setIsMenuOpen(false)} className="px-4 py-3 hover:bg-muted rounded-md text-sm font-medium">Leaderboard</Link>
                     <Link href="/blogs" onClick={() => setIsMenuOpen(false)} className="px-4 py-3 hover:bg-muted rounded-md text-sm font-medium">Blogs</Link>
                 </div>

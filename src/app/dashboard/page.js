@@ -160,12 +160,18 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
           <QuickActionCard
             title="Practice Problems"
             description="Solve coding challenges"
             href="/problems"
             color="blue"
+          />
+          <QuickActionCard
+            title="Multiplayer Contest"
+            description="Compete with friends"
+            href="/contest"
+            color="purple"
           />
           <QuickActionCard
             title="Leaderboard"
@@ -177,7 +183,7 @@ export default function DashboardPage() {
             title="Discussions"
             description="Join the community"
             href="/blogs"
-            color="purple"
+            color="orange"
           />
         </div>
       </div>
@@ -236,7 +242,8 @@ function QuickActionCard({ title, description, href, color }) {
   const colorClasses = {
     blue: "hover:border-blue-500/50",
     green: "hover:border-green-500/50",
-    purple: "hover:border-purple-500/50"
+    purple: "hover:border-purple-500/50",
+    orange: "hover:border-orange-500/50"
   };
 
   return (

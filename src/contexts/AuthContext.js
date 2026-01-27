@@ -54,27 +54,81 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signup = async (email, password, displayName) => {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(result.user, { displayName });
-    
-    // Try to create user document in Firestore, but don't fail if it doesn't work
     try {
-      await setDoc(doc(db, 'users', result.user.uid), {
-        email,
-        displayName,
-        createdAt: new Date().toISOString(),
-        solvedProblems: [],
-        submissions: []
-      });
-    } catch (error) {
-      console.log('Firestore not configured, skipping user document creation');
-    }
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(result.user, { displayName });
+      
+      // Try to create user document in Firestore, but don't fail if it doesn't work
+      try {
+        await setDoc(doc(db, 'users', result.user.uid), {
+          email,
+          displayName,
+          createdAt: new Date().toISOString(),
+          solvedProblems: [],
+          submissions: []
+        });
+      } catch (error) {
+        console.log('Firestore not configured, skipping user document creation');
+      }
 
-    return result;
+      return result;
+    } catch (error) {
+      // Provide user-friendly error messages
+      let message = 'Failed to create account';
+      
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          message = 'An account with this email already exists';
+          break;
+        case 'auth/invalid-email':
+          message = 'Invalid email address';
+          break;
+        case 'auth/operation-not-allowed':
+          message = 'Email/password accounts are not enabled';
+          break;
+        case 'auth/weak-password':
+          message = 'Password should be at least 6 characters';
+          break;
+        default:
+          message = error.message;
+      }
+      
+      throw new Error(message);
+    }
   };
 
-  const login = (email, password) => {
-    return signInWithEmailAndPassword(auth, email, password);
+  const login = async (email, password) => {
+    try {
+      return await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      // Provide user-friendly error messages
+      let message = 'Failed to sign in';
+      
+      switch (error.code) {
+        case 'auth/invalid-email':
+          message = 'Invalid email address';
+          break;
+        case 'auth/user-disabled':
+          message = 'This account has been disabled';
+          break;
+        case 'auth/user-not-found':
+          message = 'No account found with this email';
+          break;
+        case 'auth/wrong-password':
+          message = 'Incorrect password';
+          break;
+        case 'auth/invalid-credential':
+          message = 'Invalid email or password';
+          break;
+        case 'auth/too-many-requests':
+          message = 'Too many failed attempts. Please try again later';
+          break;
+        default:
+          message = error.message;
+      }
+      
+      throw new Error(message);
+    }
   };
 
   const logout = () => {
@@ -82,27 +136,51 @@ export function AuthProvider({ children }) {
   };
 
   const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    
-    // Try to check/create user document, but don't fail if it doesn't work
     try {
-      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', result.user.uid), {
-          email: result.user.email,
-          displayName: result.user.displayName,
-          photoURL: result.user.photoURL,
-          createdAt: new Date().toISOString(),
-          solvedProblems: [],
-          submissions: []
-        });
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      // Try to check/create user document, but don't fail if it doesn't work
+      try {
+        const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+        if (!userDoc.exists()) {
+          await setDoc(doc(db, 'users', result.user.uid), {
+            email: result.user.email,
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+            createdAt: new Date().toISOString(),
+            solvedProblems: [],
+            submissions: []
+          });
+        }
+      } catch (error) {
+        console.log('Firestore not configured, skipping user document creation');
       }
-    } catch (error) {
-      console.log('Firestore not configured, skipping user document creation');
-    }
 
-    return result;
+      return result;
+    } catch (error) {
+      // Provide user-friendly error messages
+      let message = 'Failed to sign in with Google';
+      
+      switch (error.code) {
+        case 'auth/popup-closed-by-user':
+          message = 'Sign in cancelled';
+          break;
+        case 'auth/popup-blocked':
+          message = 'Popup was blocked. Please allow popups for this site';
+          break;
+        case 'auth/cancelled-popup-request':
+          message = 'Sign in cancelled';
+          break;
+        case 'auth/account-exists-with-different-credential':
+          message = 'An account already exists with this email';
+          break;
+        default:
+          message = error.message;
+      }
+      
+      throw new Error(message);
+    }
   };
 
   const value = {

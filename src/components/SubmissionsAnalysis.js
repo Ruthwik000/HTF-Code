@@ -1,6 +1,10 @@
 "use client";
 
-import { CheckCircle2, XCircle, Clock, Zap, Database, TrendingUp, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { CheckCircle2, XCircle, Clock, Zap, Database, TrendingUp, ChevronRight, Loader2, Calendar } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -25,8 +29,80 @@ ChartJS.register(
   Filler
 );
 
-export default function SubmissionsAnalysis({ testResults, testCases }) {
-  if (!testResults || !testResults.testResults || testResults.testResults.length === 0) {
+export default function SubmissionsAnalysis({ testResults, testCases, problemId, onSubmissionComplete }) {
+  const { user } = useAuth();
+  const [submissions, setSubmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+
+  // Load user's submissions for this problem
+  useEffect(() => {
+    if (user && problemId) {
+      loadSubmissions();
+    }
+  }, [user, problemId]);
+
+  // When new test results come in, show them AND reload submissions
+  useEffect(() => {
+    if (testResults && testResults.testResults) {
+      setSelectedSubmission({
+        isNew: true,
+        results: testResults.testResults,
+        submittedAt: new Date(),
+        status: testResults.testResults.every(r => r.passed) ? 'Accepted' : 'Wrong Answer',
+        testCasesPassed: testResults.testResults.filter(r => r.passed).length,
+        totalTestCases: testResults.testResults.length
+      });
+      
+      // Reload submissions after a short delay to get the newly saved one
+      setTimeout(() => {
+        if (user && problemId) {
+          loadSubmissions();
+        }
+      }, 1000);
+    }
+  }, [testResults, user, problemId]);
+
+  const loadSubmissions = async () => {
+    setLoading(true);
+    try {
+      const submissionsRef = collection(db, 'submissions');
+      const q = query(
+        submissionsRef,
+        where('userId', '==', user.uid),
+        where('problemId', '==', problemId),
+        orderBy('submittedAt', 'desc'),
+        limit(20)
+      );
+      
+      const snapshot = await getDocs(q);
+      const subs = [];
+      snapshot.forEach((doc) => {
+        subs.push({ id: doc.id, ...doc.data() });
+      });
+      
+      setSubmissions(subs);
+      
+      // Select most recent submission if no test results yet
+      if (subs.length > 0 && !testResults) {
+        setSelectedSubmission(subs[0]);
+      }
+    } catch (error) {
+      console.error('Error loading submissions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="animate-spin text-primary" size={32} />
+      </div>
+    );
+  }
+
+  if (!selectedSubmission && submissions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -40,15 +116,37 @@ export default function SubmissionsAnalysis({ testResults, testCases }) {
     );
   }
 
-  const results = testResults.testResults;
+  // Get data from selected submission
+  const currentData = selectedSubmission?.isNew 
+    ? { 
+        results: selectedSubmission.results,
+        status: selectedSubmission.status,
+        testCasesPassed: selectedSubmission.testCasesPassed,
+        totalTestCases: selectedSubmission.totalTestCases,
+        runtime: selectedSubmission.results.reduce((sum, r) => sum + (r.metrics?.executionTime || 0), 0) / selectedSubmission.results.length
+      }
+    : selectedSubmission;
+
+  // Handle both 'results' and 'testResults' field names
+  const results = currentData?.results || currentData?.testResults || [];
+  
+  if (!results || results.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <p>No submission data available</p>
+        <p className="text-xs mt-2">Debug: {JSON.stringify(Object.keys(currentData || {}))}</p>
+      </div>
+    );
+  }
   const passedTests = results.filter(r => r.passed).length;
   const totalTests = results.length;
   const allPassed = passedTests === totalTests;
   const firstResult = results[0];
-  const avgExecutionTime = (results.reduce((sum, r) => sum + (r.metrics?.executionTime || 0), 0) / results.length).toFixed(2);
+  const avgExecutionTime = currentData.runtime || 
+    (results.reduce((sum, r) => sum + (r.metrics?.executionTime || r.runtime || 0), 0) / results.length).toFixed(2);
   
   // Trading metrics if available
-  const tradingMetrics = firstResult?.metrics?.tradingMetrics;
+  const tradingMetrics = currentData.tradingMetrics || firstResult?.metrics?.tradingMetrics;
 
   // Chart data for P&L
   const pnlData = tradingMetrics?.pnlHistory ? {
@@ -99,6 +197,56 @@ export default function SubmissionsAnalysis({ testResults, testCases }) {
 
   return (
     <div className="space-y-6">
+      {/* Submissions History */}
+      {submissions.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Submission History</h3>
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {submissions.map((sub) => {
+              const isSelected = selectedSubmission?.id === sub.id;
+              const subPassed = sub.status === 'Accepted';
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => setSelectedSubmission(sub)}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                    isSelected
+                      ? 'bg-primary/10 border-primary'
+                      : 'bg-muted/20 border-border hover:bg-muted/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {subPassed ? (
+                        <CheckCircle2 className="text-green-500" size={16} />
+                      ) : (
+                        <XCircle className="text-red-500" size={16} />
+                      )}
+                      <span className="text-sm font-medium text-foreground">
+                        {subPassed ? 'Accepted' : 'Wrong Answer'}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {sub.testCasesPassed}/{sub.totalTestCases} passed
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        {sub.runtime}ms
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar size={12} />
+                        {new Date(sub.submittedAt?.toDate?.() || sub.submittedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Status Header */}
       <div className={`p-4 rounded-lg border ${
         allPassed 

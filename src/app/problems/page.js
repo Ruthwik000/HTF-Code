@@ -4,13 +4,17 @@ import { useState, useMemo } from "react";
 import SidebarFilter from "@/components/SidebarFilter";
 import ProblemTable from "@/components/ProblemTable";
 import { problems } from "@/data/problems";
+import { generatedProblems } from "@/data/generated100Problems";
+
+// Combine all problems
+const allProblems = [...problems, ...generatedProblems];
 
 export default function ProblemsPage() {
     const [selectedDifficulty, setSelectedDifficulty] = useState("");
     const [selectedTopics, setSelectedTopics] = useState([]);
 
     const filteredProblems = useMemo(() => {
-        return problems.filter((problem) => {
+        return allProblems.filter((problem) => {
             const difficultyMatch = selectedDifficulty
                 ? problem.difficulty === selectedDifficulty
                 : true;

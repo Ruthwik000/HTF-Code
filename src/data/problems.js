@@ -14,20 +14,32 @@ export const problems = [
       {
         id: 1,
         name: "Basic Operations",
-        input: "ADD BUY 100.0 10\nADD BUY 99.0 5\nADD SELL 101.0 8\nGET_BEST_BID\nGET_BEST_ASK",
-        expectedOutput: "Best Bid: 100.0 (10 shares)\nBest Ask: 101.0 (8 shares)",
+        input: "100.0 10\n99.0 5\n101.0 8",
+        expectedOutput: "100.0\n101.0",
       },
       {
         id: 2,
         name: "Order Matching",
-        input: "ADD BUY 100.0 10\nADD SELL 100.0 5\nMARKET_ORDER BUY 5",
-        expectedOutput: "Market order executed: 5 shares at 100.0",
+        input: "100.0 10\n100.0 5",
+        expectedOutput: "5",
       },
       {
         id: 3,
-        name: "Order Cancellation",
-        input: "ADD BUY 100.0 10\nCANCEL order1\nGET_BEST_BID",
-        expectedOutput: "Best Bid: None",
+        name: "Price-Time Priority",
+        input: "100.0 10\n100.0 15\n99.5 20",
+        expectedOutput: "100.0",
+      },
+      {
+        id: 4,
+        name: "Multiple Price Levels",
+        input: "100.0 10\n99.5 20\n101.0 15\n100.5 25",
+        expectedOutput: "100.0\n100.5",
+      },
+      {
+        id: 5,
+        name: "Empty Order Book",
+        input: "",
+        expectedOutput: "None\nNone",
       }
     ],
     metrics: {
@@ -51,20 +63,32 @@ export const problems = [
       {
         id: 1,
         name: "Basic VWAP",
-        input: "TRADE 100.0 10\nTRADE 101.0 20\nTRADE 99.0 15\nVWAP_LAST_N 3",
-        expectedOutput: "VWAP: 100.11",
+        input: "100.0 10\n101.0 20\n99.0 15",
+        expectedOutput: "100.11",
       },
       {
         id: 2,
-        name: "Time-based VWAP",
-        input: "TRADE 100.0 10 t=1000\nTRADE 101.0 20 t=1500\nVWAP_LAST_SECONDS 2",
-        expectedOutput: "VWAP: 100.67",
+        name: "Single Trade",
+        input: "100.0 50",
+        expectedOutput: "100.00",
       },
       {
         id: 3,
-        name: "Rolling Window",
-        input: "TRADE 100.0 100\nTRADE 102.0 50\nTRADE 98.0 75\nVWAP_LAST_N 2",
-        expectedOutput: "VWAP: 99.78",
+        name: "Equal Volumes",
+        input: "100.0 10\n102.0 10\n98.0 10",
+        expectedOutput: "100.00",
+      },
+      {
+        id: 4,
+        name: "Large Volume Weighted",
+        input: "100.0 100\n102.0 50\n98.0 75",
+        expectedOutput: "99.78",
+      },
+      {
+        id: 5,
+        name: "High Precision",
+        input: "100.25 33\n100.50 67\n100.75 100",
+        expectedOutput: "100.56",
       }
     ],
     metrics: {
@@ -87,14 +111,32 @@ export const problems = [
       {
         id: 1,
         name: "Multi-Exchange NBBO",
-        input: "TICK NYSE AAPL BID 150.00 1000\nTICK NASDAQ AAPL BID 150.01 800\nGET_NBBO AAPL",
-        expectedOutput: "Best Bid: 150.01 @ NASDAQ",
+        input: "150.00 1000\n150.01 800\n149.99 500",
+        expectedOutput: "150.01",
       },
       {
         id: 2,
         name: "Arbitrage Detection",
-        input: "TICK EXCHANGE_A AAPL BID 150.10 100\nTICK EXCHANGE_B AAPL ASK 150.08 250\nDETECT_ARBITRAGE AAPL",
-        expectedOutput: "ARBITRAGE: Crossed market detected",
+        input: "150.10 100\n150.08 250",
+        expectedOutput: "ARBITRAGE",
+      },
+      {
+        id: 3,
+        name: "Normal Market",
+        input: "150.00 1000\n150.05 800\n150.10 500",
+        expectedOutput: "150.10",
+      },
+      {
+        id: 4,
+        name: "Single Exchange",
+        input: "150.00 1000",
+        expectedOutput: "150.00",
+      },
+      {
+        id: 5,
+        name: "Large Spread",
+        input: "150.00 1000\n151.00 800\n152.00 500",
+        expectedOutput: "152.00",
       }
     ],
     metrics: {
@@ -117,20 +159,32 @@ export const problems = [
       {
         id: 1,
         name: "Z-Score Entry Signal",
-        input: "STOCK_A: 105, STOCK_B: 52\nZSCORE: 2.5\nTHRESHOLD: 2.0",
-        expectedOutput: "Signal: SHORT STOCK_A, LONG STOCK_B",
+        input: "105 52 2.5 2.0",
+        expectedOutput: "SHORT",
       },
       {
         id: 2,
-        name: "Mean Reversion Exit",
-        input: "ZSCORE: [2.5, 2.3, 1.8, 0.6, 0.3]\nEXIT_THRESHOLD: 0.5",
-        expectedOutput: "Position closed at z=0.3\nP&L: +$245.50",
+        name: "Mean Reversion",
+        input: "100 50 0.3 2.0",
+        expectedOutput: "CLOSE",
       },
       {
         id: 3,
+        name: "No Signal",
+        input: "100 50 1.5 2.0",
+        expectedOutput: "HOLD",
+      },
+      {
+        id: 4,
+        name: "Long Entry",
+        input: "95 52 -2.5 2.0",
+        expectedOutput: "LONG",
+      },
+      {
+        id: 5,
         name: "Stop Loss",
-        input: "ENTRY_ZSCORE: 2.0\nCURRENT_ZSCORE: 3.5\nSTOP_LOSS: 3.0",
-        expectedOutput: "STOP LOSS TRIGGERED\nLoss: -$120.00",
+        input: "110 52 3.5 2.0",
+        expectedOutput: "STOP",
       }
     ],
     metrics: {
@@ -154,20 +208,32 @@ export const problems = [
       {
         id: 1,
         name: "Basic Quoting",
-        input: "PRICE: 100.00\nINVENTORY: 0\nVOLATILITY: 0.20",
-        expectedOutput: "Bid: 99.98 x 100\nAsk: 100.02 x 100",
+        input: "100.00 0 0.20",
+        expectedOutput: "99.98 100.02",
       },
       {
         id: 2,
-        name: "Inventory Skewing",
-        input: "PRICE: 100.00\nINVENTORY: +500\nMAX: 1000",
-        expectedOutput: "Bid: 99.96 x 50\nAsk: 100.01 x 150 [skewed to sell]",
+        name: "Positive Inventory",
+        input: "100.00 500 0.20",
+        expectedOutput: "99.96 100.01",
       },
       {
         id: 3,
-        name: "Adverse Selection",
-        input: "LAST_FILLS: [BUY, BUY, BUY, BUY]",
-        expectedOutput: "Spread widened: 0.08 (2x)\nSize reduced: 50%",
+        name: "Negative Inventory",
+        input: "100.00 -500 0.20",
+        expectedOutput: "99.99 100.04",
+      },
+      {
+        id: 4,
+        name: "High Volatility",
+        input: "100.00 0 0.50",
+        expectedOutput: "99.95 100.05",
+      },
+      {
+        id: 5,
+        name: "Low Volatility",
+        input: "100.00 0 0.10",
+        expectedOutput: "99.99 100.01",
       }
     ],
     metrics: {

@@ -4,6 +4,17 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { problems } from "@/data/problems";
+import { generatedProblems } from "@/data/generated100Problems";
+import { problemTemplates } from "@/data/problemTemplates";
+import { editorials } from "@/data/editorials";
+import { originalEditorials } from "@/data/originalEditorials";
+import Editorial from "@/components/Editorial";
+
+// Combine all editorials
+const allEditorials = { ...editorials, ...originalEditorials };
+
+// Combine original and generated problems
+const allProblems = [...problems, ...generatedProblems];
 import DifficultyBadge from "@/components/DifficultyBadge";
 import TopicTag from "@/components/TopicTag";
 import CodeEditor from "@/components/CodeEditor";
@@ -18,60 +29,19 @@ const FLAIRS = ["Problem Statement", "Strategy", "Optimization", "Bug", "Questio
 const LANGUAGES = {
     python: {
         name: "Python 3.10",
-        value: "python",
-        template: `# Write your solution here
-def solve(n):
-    # Your code here
-    return n * 2
-
-# Test
-print(solve(5))
-`
+        value: "python"
     },
     cpp: {
         name: "C++ 20",
-        value: "cpp",
-        template: `#include <iostream>
-using namespace std;
-
-int solve(int n) {
-    // Your code here
-    return n * 2;
-}
-
-int main() {
-    cout << solve(5) << endl;
-    return 0;
-}
-`
+        value: "cpp"
     },
     java: {
         name: "Java 15",
-        value: "java",
-        template: `public class Main {
-    public static int solve(int n) {
-        // Your code here
-        return n * 2;
-    }
-    
-    public static void main(String[] args) {
-        System.out.println(solve(5));
-    }
-}
-`
+        value: "java"
     },
     javascript: {
         name: "JavaScript",
-        value: "javascript",
-        template: `// Write your solution here
-function solve(n) {
-    // Your code here
-    return n * 2;
-}
-
-// Test
-console.log(solve(5));
-`
+        value: "javascript"
     }
 };
 
@@ -100,17 +70,25 @@ export default function ProblemPage() {
     const { slug } = useParams();
     const router = useRouter();
     const { user } = useAuth();
+    
+    // Find problem data first
+    const problem = allProblems.find((p) => p.slug === slug);
+    
     const [activeTab, setActiveTab] = useState("description");
     const [selectedLanguage, setSelectedLanguage] = useState("python");
-    const [code, setCode] = useState(LANGUAGES.python.template);
+    const [code, setCode] = useState(() => {
+        // Get initial template based on problem
+        if (problem && problemTemplates[slug]) {
+            return problemTemplates[slug].python || "# Write your solution here\n";
+        }
+        return "# Write your solution here\n";
+    });
     const [isRunning, setIsRunning] = useState(false);
     const [selectedFlair, setSelectedFlair] = useState(FLAIRS[0]);
     const [testResults, setTestResults] = useState(null);
     const [showSubmissionAnalysis, setShowSubmissionAnalysis] = useState(false);
     const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-
-    // Find problem data
-    const problem = problems.find((p) => p.slug === slug);
+    const [editorialUnlocked, setEditorialUnlocked] = useState(false);
 
     if (!problem) {
         return <div className="p-12 text-center">Problem not found</div>;
@@ -156,13 +134,47 @@ export default function ProblemPage() {
         if (results && results.length > 0) {
             setShowSubmissionAnalysis(true);
             setActiveTab("submissions");
+            
+            // Unlock editorial if all tests pass
+            const allPassed = results.every(r => r.passed);
+            if (allPassed) {
+                setEditorialUnlocked(true);
+            }
         }
+    };
+
+    const handleUnlockEditorial = () => {
+        // In a real app, this would check for tokens or payment
+        setEditorialUnlocked(true);
+        setActiveTab("editorial");
+    };
+
+    // Get editorial for this problem
+    const getEditorial = () => {
+        // First try exact match
+        if (allEditorials[slug]) {
+            return allEditorials[slug];
+        }
+        
+        // Try to find editorial by matching slug pattern
+        for (const [pattern, editorial] of Object.entries(allEditorials)) {
+            if (slug.includes(pattern)) {
+                return editorial;
+            }
+        }
+        return null;
     };
 
     const handleLanguageChange = (e) => {
         const lang = e.target.value;
         setSelectedLanguage(lang);
-        setCode(LANGUAGES[lang].template);
+        
+        // Get template for this problem and language
+        if (problemTemplates[slug] && problemTemplates[slug][lang]) {
+            setCode(problemTemplates[slug][lang]);
+        } else {
+            setCode(`// Write your solution here for ${problem.title}\n`);
+        }
     };
 
     const getFlairColor = (flair) => {
@@ -314,13 +326,12 @@ export default function ProblemPage() {
                 )}
 
                 {activeTab === "editorial" && (
-                    <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                        <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                            <Lock size={24} />
-                        </div>
-                        <h3 className="text-lg font-medium text-foreground mb-2">Editorial Locked</h3>
-                        <p className="max-w-xs">Solve the problem or use an &quot;Unlock Token&quot; to view the official solution.</p>
-                    </div>
+                    <Editorial 
+                        problemSlug={slug}
+                        editorial={getEditorial()}
+                        isUnlocked={editorialUnlocked}
+                        onUnlock={handleUnlockEditorial}
+                    />
                 )}
             </div>
         </div>

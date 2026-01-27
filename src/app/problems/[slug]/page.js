@@ -8,6 +8,7 @@ import { generatedProblems } from "@/data/generated100Problems";
 import { problemTemplates } from "@/data/problemTemplates";
 import { editorials } from "@/data/editorials";
 import { originalEditorials } from "@/data/originalEditorials";
+import { recordSubmission } from "@/lib/leaderboardService";
 import Editorial from "@/components/Editorial";
 
 // Combine all editorials
@@ -135,8 +136,50 @@ export default function ProblemPage() {
             setShowSubmissionAnalysis(true);
             setActiveTab("submissions");
             
-            // Unlock editorial if all tests pass
+            // Check if all tests passed
             const allPassed = results.every(r => r.passed);
+            const passedCount = results.filter(r => r.passed).length;
+            const score = (passedCount / results.length) * 100;
+            
+            // Calculate metrics
+            const avgRuntime = results.reduce((sum, r) => sum + (r.metrics?.executionTime || 0), 0) / results.length;
+            const totalMemory = results.reduce((sum, r) => sum + (r.metrics?.memory || 0), 0);
+            
+            // Extract trading metrics if available
+            const tradingMetrics = results[0]?.metrics?.tradingMetrics || {};
+            
+            // Record submission to Firebase
+            try {
+                const submissionId = await recordSubmission(user.uid, problem.id, {
+                    code: code,
+                    language: selectedLanguage,
+                    status: allPassed ? 'Accepted' : 'Wrong Answer',
+                    runtime: Math.round(avgRuntime),
+                    memory: Math.round(totalMemory),
+                    testCasesPassed: passedCount,
+                    totalTestCases: results.length,
+                    score: score,
+                    tradingMetrics: tradingMetrics,
+                    results: results.map(r => ({
+                        testCaseId: r.testId,
+                        passed: r.passed,
+                        actualOutput: r.actualOutput,
+                        expectedOutput: r.expectedOutput,
+                        runtime: r.metrics?.executionTime || 0,
+                        memory: r.metrics?.memory || 0,
+                        error: r.error || null
+                    }))
+                });
+                
+                console.log('✅ Submission recorded successfully:', submissionId);
+                console.log('📊 Leaderboard will update automatically');
+            } catch (error) {
+                console.error('❌ Error recording submission:', error);
+                // Show error to user
+                alert('Submission saved locally but failed to sync with leaderboard. Please check your connection.');
+            }
+            
+            // Unlock editorial if all tests pass
             if (allPassed) {
                 setEditorialUnlocked(true);
             }
@@ -264,7 +307,11 @@ export default function ProblemPage() {
                 )}
 
                 {activeTab === "submissions" && (
-                    <SubmissionsAnalysis testResults={testResults} testCases={problem.testCases} />
+                    <SubmissionsAnalysis 
+                        testResults={testResults} 
+                        testCases={problem.testCases}
+                        problemId={problem.id}
+                    />
                 )}
 
                 {activeTab === "discuss" && (

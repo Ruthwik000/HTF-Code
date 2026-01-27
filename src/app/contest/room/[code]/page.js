@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAblyClient } from "@/lib/ably";
@@ -14,7 +14,7 @@ export default function ContestRoomPage() {
   const { user } = useAuth();
   const isHost = searchParams.get("host") === "true";
 
-  const [channel, setChannel] = useState(null);
+  const channelRef = useRef(null);
   const [participants, setParticipants] = useState([]);
   const [roomSettings, setRoomSettings] = useState({
     topics: [],
@@ -47,6 +47,7 @@ export default function ContestRoomPage() {
 
     const ably = getAblyClient();
     const roomChannel = ably.channels.get(`contest-${code}`);
+    channelRef.current = roomChannel;
 
     // Join room
     roomChannel.presence.enter({
@@ -76,8 +77,6 @@ export default function ContestRoomPage() {
       setSelectedProblems(message.data.problems);
     });
 
-    setChannel(roomChannel);
-
     return () => {
       roomChannel.presence.leave();
       roomChannel.unsubscribe();
@@ -100,8 +99,8 @@ export default function ContestRoomPage() {
   };
 
   const updateSettings = () => {
-    if (channel && isHost) {
-      channel.publish("settings-update", roomSettings);
+    if (channelRef.current && isHost) {
+      channelRef.current.publish("settings-update", roomSettings);
     }
   };
 
@@ -130,8 +129,8 @@ export default function ContestRoomPage() {
     const shuffled = problemsToUse.sort(() => 0.5 - Math.random());
     const selected = shuffled.slice(0, Math.min(roomSettings.problemCount, shuffled.length));
 
-    if (channel && selected.length > 0) {
-      channel.publish("contest-start", { problems: selected });
+    if (channelRef.current && selected.length > 0) {
+      channelRef.current.publish("contest-start", { problems: selected });
       setContestStarted(true);
       setSelectedProblems(selected);
     }
@@ -144,7 +143,6 @@ export default function ContestRoomPage() {
         problems={selectedProblems}
         participants={participants}
         timeLimit={roomSettings.timeLimit}
-        channel={channel}
         user={user}
       />
     );
@@ -336,7 +334,7 @@ export default function ContestRoomPage() {
 }
 
 // Contest Arena Component (simplified for now)
-function ContestArena({ code, problems, participants, timeLimit, channel, user }) {
+function ContestArena({ code, problems, participants, timeLimit, user }) {
   const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60);
   const [currentProblemIndex, setCurrentProblemIndex] = useState(0);
   const router = useRouter();

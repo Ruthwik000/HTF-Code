@@ -27,8 +27,17 @@ export default function ContestRoomPage() {
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(isHost);
 
-  // Available topics from problems
-  const availableTopics = [...new Set(problems.flatMap(p => p.topics))];
+  // HFT-specific topics
+  const availableTopics = [
+    "Order Book",
+    "Arbitrage",
+    "Probability Statistics",
+    "Z Score",
+    "Fast Queue",
+    "Low Latency Datastructures",
+    "Market Microstructure",
+    "Game Theory"
+  ];
 
   useEffect(() => {
     if (!user) {
@@ -100,16 +109,28 @@ export default function ContestRoomPage() {
     if (!isHost || roomSettings.topics.length === 0) return;
 
     // Filter problems by selected topics and difficulty
-    const filteredProblems = problems.filter(p =>
-      p.difficulty === roomSettings.difficulty &&
-      p.topics.some(t => roomSettings.topics.includes(t))
-    );
+    // Match if problem has ANY of the selected topics
+    const filteredProblems = problems.filter(p => {
+      const matchesDifficulty = p.difficulty === roomSettings.difficulty;
+      const matchesTopic = p.topics.some(pTopic => 
+        roomSettings.topics.some(selectedTopic => 
+          pTopic.toLowerCase().includes(selectedTopic.toLowerCase()) ||
+          selectedTopic.toLowerCase().includes(pTopic.toLowerCase())
+        )
+      );
+      return matchesDifficulty && matchesTopic;
+    });
+
+    // If no exact matches, get all problems of the selected difficulty
+    const problemsToUse = filteredProblems.length > 0 
+      ? filteredProblems 
+      : problems.filter(p => p.difficulty === roomSettings.difficulty);
 
     // Randomly select problems
-    const shuffled = filteredProblems.sort(() => 0.5 - Math.random());
-    const selected = shuffled.slice(0, roomSettings.problemCount);
+    const shuffled = problemsToUse.sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, Math.min(roomSettings.problemCount, shuffled.length));
 
-    if (channel) {
+    if (channel && selected.length > 0) {
       channel.publish("contest-start", { problems: selected });
       setContestStarted(true);
       setSelectedProblems(selected);

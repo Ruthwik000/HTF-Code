@@ -1,4 +1,4 @@
-# HFTCode - High-Frequency Trading Coding Platform
+### HFTCode - High-Frequency Trading Coding Platform
 
 A competitive coding platform dedicated to quantitative finance, market microstructure, and algorithmic execution - similar to LeetCode but for trading algorithms.
 

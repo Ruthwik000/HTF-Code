@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { problems } from "@/data/problems";
 import { generatedProblems } from "@/data/generated100Problems";
@@ -9,7 +9,9 @@ import { problemTemplates } from "@/data/problemTemplates";
 import { editorials } from "@/data/editorials";
 import { originalEditorials } from "@/data/originalEditorials";
 import { recordSubmission } from "@/lib/leaderboardService";
+import { getAblyClient } from "@/lib/ably";
 import Editorial from "@/components/Editorial";
+import ContestChat from "@/components/ContestChat";
 
 // Combine all editorials
 const allEditorials = { ...editorials, ...originalEditorials };
@@ -23,7 +25,7 @@ import LeetCodeStyleResults from "@/components/LeetCodeStyleResults";
 import SubmissionsAnalysis from "@/components/SubmissionsAnalysis";
 import ResizablePanel from "@/components/ResizablePanel";
 import ResizableVerticalPanel from "@/components/ResizableVerticalPanel";
-import { Lock, ThumbsUp, MessageSquare, Tag, Play, CheckCircle } from "lucide-react";
+import { Lock, ThumbsUp, MessageSquare, Tag, Play, CheckCircle, ArrowLeft } from "lucide-react";
 
 const FLAIRS = ["Problem Statement", "Strategy", "Optimization", "Bug", "Question"];
 
@@ -70,19 +72,108 @@ const MOCK_DISCUSSIONS = [
 export default function ProblemPage() {
     const { slug } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { user } = useAuth();
+    const contestCode = searchParams.get('contest');
     
     // Find problem data first
     const problem = allProblems.find((p) => p.slug === slug);
     
+    // Contest chat channel
+    const [contestChannel, setContestChannel] = useState(null);
+    
+    useEffect(() => {
+        if (contestCode) {
+            const ably = getAblyClient();
+            const channel = ably.channels.get(`contest-${contestCode}-live`);
+            setContestChannel(channel);
+            
+            return () => {
+                channel.unsubscribe();
+            };
+        }
+    }, [contestCode]);
+    
+    // Helper function to get minimal starter code
+    const getMinimalStarterCode = (lang, prob) => {
+        if (!prob) return "// Write your solution here\n";
+        
+        const templates = {
+            python: `# ${prob.title}
+# TODO: Implement your solution here
+
+def solve():
+    import sys
+    lines = sys.stdin.read().strip().split('\\n')
+    
+    # Your code here
+    
+    print("result")
+
+solve()
+`,
+            javascript: `// ${prob.title}
+// TODO: Implement your solution here
+
+const readline = require('readline');
+
+async function solve() {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false
+    });
+    
+    const lines = [];
+    for await (const line of rl) {
+        lines.push(line);
+    }
+    
+    // Your code here
+    
+    console.log("result");
+}
+
+solve();
+`,
+            cpp: `// ${prob.title}
+// TODO: Implement your solution here
+
+#include <iostream>
+#include <string>
+using namespace std;
+
+int main() {
+    // Your code here
+    
+    cout << "result" << endl;
+    return 0;
+}
+`,
+            java: `// ${prob.title}
+// TODO: Implement your solution here
+
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        
+        // Your code here
+        
+        System.out.println("result");
+    }
+}
+`
+        };
+        return templates[lang] || `// Write your solution here for ${prob.title}\n`;
+    };
+    
     const [activeTab, setActiveTab] = useState("description");
     const [selectedLanguage, setSelectedLanguage] = useState("python");
     const [code, setCode] = useState(() => {
-        // Get initial template based on problem
-        if (problem && problemTemplates[slug]) {
-            return problemTemplates[slug].python || "# Write your solution here\n";
-        }
-        return "# Write your solution here\n";
+        // Provide minimal starter code based on language
+        return getMinimalStarterCode("python", problem);
     });
     const [isRunning, setIsRunning] = useState(false);
     const [selectedFlair, setSelectedFlair] = useState(FLAIRS[0]);
@@ -211,13 +302,7 @@ export default function ProblemPage() {
     const handleLanguageChange = (e) => {
         const lang = e.target.value;
         setSelectedLanguage(lang);
-        
-        // Get template for this problem and language
-        if (problemTemplates[slug] && problemTemplates[slug][lang]) {
-            setCode(problemTemplates[slug][lang]);
-        } else {
-            setCode(`// Write your solution here for ${problem.title}\n`);
-        }
+        setCode(getMinimalStarterCode(lang, problem));
     };
 
     const getFlairColor = (flair) => {
@@ -234,6 +319,17 @@ export default function ProblemPage() {
         <div className="flex flex-col h-full bg-card border-r border-border">
             {/* Header */}
             <div className="p-6 border-b border-border flex-shrink-0">
+                {/* Back to Contest Button */}
+                {contestCode && (
+                    <button
+                        onClick={() => router.push(`/contest/room/${contestCode}`)}
+                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+                    >
+                        <ArrowLeft size={16} />
+                        Back to Contest
+                    </button>
+                )}
+                
                 <div className="flex items-center justify-between mb-4">
                     <h1 className="text-xl lg:text-2xl font-bold text-foreground">{problem.title}</h1>
                     <DifficultyBadge difficulty={problem.difficulty} />
@@ -453,6 +549,11 @@ export default function ProblemPage() {
 
     return (
         <div className="h-[calc(100vh-64px)] overflow-hidden">
+            {/* Contest Chat - only show if in contest mode */}
+            {contestCode && contestChannel && user && (
+                <ContestChat roomCode={contestCode} user={user} ablyChannel={contestChannel} />
+            )}
+            
             {/* Login Prompt Modal */}
             {showLoginPrompt && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">

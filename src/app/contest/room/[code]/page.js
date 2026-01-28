@@ -5,7 +5,20 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAblyClient } from "@/lib/ably";
 import { problems } from "@/data/problems";
-import { Users, Copy, Check, Play, Trophy, Clock, Settings, RefreshCw } from "lucide-react";
+import { generatedProblems } from "@/data/generated100Problems";
+import { 
+  createContestRoom, 
+  joinContestRoom, 
+  startContest as saveContestStart,
+  recordContestSubmission,
+  completeContest,
+  calculateContestLeaderboard
+} from "@/lib/contestService";
+import ContestChat from "@/components/ContestChat";
+import { Users, Copy, Check, Play, Trophy, Clock, Settings, RefreshCw, DollarSign, Zap } from "lucide-react";
+
+// Combine all problems
+const allProblems = [...problems, ...generatedProblems];
 
 export default function ContestRoomPage() {
   const { code } = useParams();
@@ -46,6 +59,16 @@ export default function ContestRoomPage() {
       return;
     }
 
+    // Check if contest was already started (from session storage)
+    const savedContestState = sessionStorage.getItem(`contest-${code}-state`);
+    if (savedContestState) {
+      const { started, problems } = JSON.parse(savedContestState);
+      if (started && problems) {
+        setContestStarted(true);
+        setSelectedProblems(problems);
+      }
+    }
+
     const ably = getAblyClient();
     const roomChannel = ably.channels.get(`contest-${code}`);
     channelRef.current = roomChannel;
@@ -58,10 +81,19 @@ export default function ContestRoomPage() {
       isHost
     });
 
-    // Listen for presence updates
-    roomChannel.presence.subscribe(() => {
+    // Get initial presence members
+    roomChannel.presence.get((err, members) => {
+      if (!err) {
+        console.log('Initial participants:', members.length);
+        setParticipants(members.map(m => m.data));
+      }
+    });
+
+    // Listen for presence updates (enter, leave, update)
+    roomChannel.presence.subscribe(['enter', 'leave', 'update'], () => {
       roomChannel.presence.get((err, members) => {
         if (!err) {
+          console.log('Updated participants:', members.length);
           setParticipants(members.map(m => m.data));
         }
       });
@@ -76,6 +108,11 @@ export default function ContestRoomPage() {
     roomChannel.subscribe("contest-start", (message) => {
       setContestStarted(true);
       setSelectedProblems(message.data.problems);
+      // Save to session storage
+      sessionStorage.setItem(`contest-${code}-state`, JSON.stringify({
+        started: true,
+        problems: message.data.problems
+      }));
     });
 
     return () => {
@@ -117,12 +154,11 @@ export default function ContestRoomPage() {
     }
   };
 
-  const startContest = () => {
+  const startContest = async () => {
     if (!isHost || roomSettings.topics.length === 0) return;
 
     // Filter problems by selected topics and difficulty
-    // Match if problem has ANY of the selected topics
-    const filteredProblems = problems.filter(p => {
+    const filteredProblems = allProblems.filter(p => {
       const matchesDifficulty = p.difficulty === roomSettings.difficulty;
       const matchesTopic = p.topics.some(pTopic => 
         roomSettings.topics.some(selectedTopic => 
@@ -136,13 +172,39 @@ export default function ContestRoomPage() {
     // If no exact matches, get all problems of the selected difficulty
     const problemsToUse = filteredProblems.length > 0 
       ? filteredProblems 
-      : problems.filter(p => p.difficulty === roomSettings.difficulty);
+      : allProblems.filter(p => p.difficulty === roomSettings.difficulty);
 
-    // Randomly select problems
-    const shuffled = problemsToUse.sort(() => 0.5 - Math.random());
+    // Use a seeded random based on room code for consistent selection across clients
+    const seed = code.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const seededRandom = (index) => {
+      const x = Math.sin(seed + index) * 10000;
+      return x - Math.floor(x);
+    };
+    
+    // Shuffle with seeded random
+    const shuffled = problemsToUse
+      .map((problem, index) => ({ problem, sort: seededRandom(index) }))
+      .sort((a, b) => a.sort - b.sort)
+      .map(({ problem }) => problem);
+    
     const selected = shuffled.slice(0, Math.min(roomSettings.problemCount, shuffled.length));
 
     if (channelRef.current && selected.length > 0) {
+      // Save to Firebase (optional - won't block if it fails)
+      try {
+        await saveContestStart(code, selected);
+        console.log('✅ Contest saved to Firebase');
+      } catch (error) {
+        console.warn('⚠️ Could not save to Firebase, continuing with Ably only:', error.message);
+      }
+      
+      // Save to session storage
+      sessionStorage.setItem(`contest-${code}-state`, JSON.stringify({
+        started: true,
+        problems: selected
+      }));
+      
+      // Broadcast via Ably (primary method) - send the actual selected problems
       channelRef.current.publish("contest-start", { problems: selected });
       setContestStarted(true);
       setSelectedProblems(selected);
@@ -356,7 +418,7 @@ export default function ContestRoomPage() {
   );
 }
 
-// Contest Arena Component with real-time leaderboard
+// Contest Arena Component with real-time leaderboard and chat
 function ContestArena({ code, problems, participants, timeLimit, user }) {
   const [timeRemaining, setTimeRemaining] = useState(timeLimit * 60);
   const [showResults, setShowResults] = useState(false);
@@ -365,7 +427,7 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
   const router = useRouter();
   const channelRef = useRef(null);
 
-  // Initialize leaderboard from participants and update with submissions
+  // Calculate leaderboard with profit tracking
   const leaderboard = useMemo(() => {
     const board = participants.map(p => ({
       userId: p.userId,
@@ -373,30 +435,43 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
       photoURL: p.photoURL,
       solved: 0,
       totalTime: 0,
+      totalProfit: 0,
+      avgRuntime: 0,
       problems: {}
     }));
 
     // Apply submission updates
     Object.entries(submissionUpdates).forEach(([key, data]) => {
       const [userId, problemId] = key.split('-');
-      const { status, time } = data;
+      const { status, time, runtime, profit } = data;
       
       const entry = board.find(e => e.userId === userId);
       if (entry) {
         if (!entry.problems[problemId]?.solved && status === 'accepted') {
-          entry.problems[problemId] = { solved: true, time };
+          entry.problems[problemId] = { solved: true, time, runtime, profit: profit || 0 };
           entry.solved += 1;
           entry.totalTime += time;
+          entry.totalProfit += profit || 0;
+          entry.avgRuntime += runtime || 0;
         } else if (!entry.problems[problemId]) {
           entry.problems[problemId] = { solved: false, attempts: 1 };
         }
       }
     });
 
-    // Sort by problems solved (desc), then by total time (asc)
+    // Calculate average runtime
+    board.forEach(entry => {
+      if (entry.solved > 0) {
+        entry.avgRuntime = Math.round(entry.avgRuntime / entry.solved);
+      }
+    });
+
+    // Sort by: problems solved (desc) → total profit (desc) → total time (asc) → avg runtime (asc)
     return board.sort((a, b) => {
       if (b.solved !== a.solved) return b.solved - a.solved;
-      return a.totalTime - b.totalTime;
+      if (Math.abs(b.totalProfit - a.totalProfit) > 0.01) return b.totalProfit - a.totalProfit;
+      if (a.totalTime !== b.totalTime) return a.totalTime - b.totalTime;
+      return a.avgRuntime - b.avgRuntime;
     });
   }, [participants, submissionUpdates]);
 
@@ -408,17 +483,17 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
 
     // Listen for submissions
     contestChannel.subscribe("submission", (message) => {
-      const { userId, problemId, status, time } = message.data;
+      const { userId, problemId, status, time, runtime, profit } = message.data;
       
       setSubmissions(prev => ({
         ...prev,
-        [`${userId}-${problemId}`]: { status, time }
+        [`${userId}-${problemId}`]: { status, time, runtime, profit }
       }));
 
       // Update submission data for leaderboard
       setSubmissionUpdates(prev => ({
         ...prev,
-        [`${userId}-${problemId}`]: { status, time }
+        [`${userId}-${problemId}`]: { status, time, runtime, profit }
       }));
     });
 
@@ -433,6 +508,8 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
         if (prev <= 1) {
           clearInterval(timer);
           setShowResults(true);
+          // Mark contest as completed
+          completeContest(code).catch(console.error);
           return 0;
         }
         return prev - 1;
@@ -440,18 +517,34 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [code]);
 
-  const handleSubmission = (problemId, status, executionTime, language) => {
+  const handleSubmission = async (problemId, status, executionTime, language, tradingMetrics) => {
     const timeElapsed = (timeLimit * 60) - timeRemaining;
+    const profit = tradingMetrics?.totalPnL || 0;
     
+    // Save to Firebase (optional - won't block if it fails)
+    try {
+      await recordContestSubmission(code, user.uid, problemId, {
+        status,
+        runtime: executionTime,
+        language,
+        tradingMetrics
+      });
+      console.log('✅ Submission saved to Firebase');
+    } catch (error) {
+      console.warn('⚠️ Could not save to Firebase, continuing with Ably only:', error.message);
+    }
+    
+    // Broadcast via Ably (primary method)
     if (channelRef.current) {
       channelRef.current.publish("submission", {
         userId: user.uid,
         problemId,
         status,
         time: timeElapsed,
-        executionTime,
+        runtime: executionTime,
+        profit,
         language
       });
     }
@@ -467,6 +560,9 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Chat Component */}
+      <ContestChat roomCode={code} user={user} ablyChannel={channelRef.current} />
+      
       <div className="container mx-auto px-4 py-6">
         {/* Contest Header with Timer */}
         <div className="bg-card rounded-lg border border-border p-4 mb-6 sticky top-0 z-10">
@@ -514,7 +610,15 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
                             <span className="text-lg font-bold text-foreground">{index + 1}.</span>
                             <h3 className="font-semibold text-foreground">{problem.title}</h3>
                             {userSubmission?.status === 'accepted' && (
-                              <Check className="text-green-400" size={20} />
+                              <div className="flex items-center gap-2">
+                                <Check className="text-green-400" size={20} />
+                                {userSubmission.profit > 0 && (
+                                  <span className="text-xs px-2 py-1 bg-green-500/10 text-green-400 rounded flex items-center gap-1">
+                                    <DollarSign size={12} />
+                                    {userSubmission.profit.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                           <div className="flex gap-2 ml-7">
@@ -584,10 +688,13 @@ function ContestArena({ code, problems, participants, timeLimit, user }) {
                         </p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>{entry.solved}/{problems.length} solved</span>
-                          {entry.totalTime > 0 && (
+                          {entry.totalProfit > 0 && (
                             <>
                               <span>•</span>
-                              <span>{Math.floor(entry.totalTime / 60)}m {entry.totalTime % 60}s</span>
+                              <span className="text-green-400 flex items-center gap-0.5">
+                                <DollarSign size={10} />
+                                {entry.totalProfit.toFixed(0)}
+                              </span>
                             </>
                           )}
                         </div>
@@ -664,9 +771,18 @@ function ContestResults({ code, leaderboard, problems }) {
                     )}
                     <div>
                       <p className="font-semibold text-foreground">{entry.displayName}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {entry.solved} problems solved
-                      </p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{entry.solved} problems solved</span>
+                        {entry.totalProfit > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-green-400 flex items-center gap-1">
+                              <DollarSign size={14} />
+                              {entry.totalProfit.toFixed(2)} profit
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
@@ -676,6 +792,12 @@ function ContestResults({ code, leaderboard, problems }) {
                     <p className="text-sm text-muted-foreground">
                       {Math.floor(entry.totalTime / 60)}m {entry.totalTime % 60}s
                     </p>
+                    {entry.avgRuntime > 0 && (
+                      <p className="text-xs text-muted-foreground flex items-center justify-end gap-1">
+                        <Zap size={12} />
+                        {entry.avgRuntime}ms avg
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -732,6 +854,12 @@ function PodiumCard({ rank, entry, problems }) {
       <p className="text-xs text-muted-foreground">
         {entry.solved}/{problems.length}
       </p>
+      {entry.totalProfit > 0 && (
+        <p className="text-xs text-green-400 flex items-center gap-0.5">
+          <DollarSign size={10} />
+          {entry.totalProfit.toFixed(0)}
+        </p>
+      )}
     </div>
   );
 }

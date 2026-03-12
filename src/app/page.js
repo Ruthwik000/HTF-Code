@@ -21,7 +21,7 @@ export default function LandingPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center max-w-4xl mx-auto"
+          className="relative z-20 text-center max-w-4xl mx-auto"
         >
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-6">
             <Radio size={12} className="animate-pulse" />
@@ -38,29 +38,27 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/signup">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                href="/signup"
                 className="px-8 py-3.5 rounded-lg bg-primary text-primary-foreground font-semibold flex items-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/25"
               >
                 Start Solving <ArrowRight size={18} />
-              </motion.button>
-            </Link>
-            <a href="#features">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+              </Link>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <a
+                href="#features"
                 className="px-8 py-3.5 rounded-lg bg-white/5 text-foreground font-semibold border border-white/10 hover:bg-white/10 transition-colors backdrop-blur-sm"
               >
                 Know More
-              </motion.button>
-            </a>
+              </a>
+            </motion.div>
           </div>
         </motion.div>
 
         {/* Floating UI Elements with Container Scroll */}
-        <div className="w-full relative z-10 -mt-20">
+        <div className="w-full relative z-0 -mt-20 pointer-events-none">
           <ContainerScroll
             titleComponent={<></>}
           >

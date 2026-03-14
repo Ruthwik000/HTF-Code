@@ -1,21 +1,178 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Code2, TrendingUp, Award, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Code2, TrendingUp, Award, CheckCircle, XCircle } from "lucide-react";
+import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { problems } from "@/data/problems";
+import { db } from "@/lib/firebase";
+import { getUserRank } from "@/lib/leaderboardService";
 import DifficultyBadge from "@/components/DifficultyBadge";
+
+const problemMap = problems.reduce((acc, problem) => {
+  acc[String(problem.id)] = {
+    title: problem.title,
+  };
+  return acc;
+}, {});
+
+function toDate(value) {
+  if (!value) return null;
+
+  if (typeof value?.toDate === "function") {
+    return value.toDate();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatRelativeTime(value) {
+  const date = toDate(value);
+  if (!date) return "Unknown time";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? "" : "s"} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+}
+
+function getDayKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function calculateDayStreak(submissions) {
+  const activeDays = new Set();
+
+  submissions.forEach((submission) => {
+    const date = toDate(submission.submittedAt);
+    if (date) {
+      activeDays.add(getDayKey(date));
+    }
+  });
+
+  let streak = 0;
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+
+  while (activeDays.has(getDayKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    solved: 0,
+    attempted: 0,
+    streak: 0,
+    rank: null
+  });
+  const [recentSubmissions, setRecentSubmissions] = useState([]);
 
   useEffect(() => {
     if (!user) {
       router.push("/login");
+      return;
     }
+
+    const loadDashboardData = async () => {
+      setStatsLoading(true);
+
+      try {
+        const userProblemsQuery = query(
+          collection(db, "userProblems"),
+          where("userId", "==", user.uid)
+        );
+
+        const getSubmissionsSnapshot = async () => {
+          try {
+            const submissionsQuery = query(
+              collection(db, "submissions"),
+              where("userId", "==", user.uid),
+              orderBy("submittedAt", "desc"),
+              limit(200)
+            );
+            return await getDocs(submissionsQuery);
+          } catch (error) {
+            // Fallback while composite index is still building
+            if (error?.code === "failed-precondition" || String(error?.message || "").includes("index")) {
+              console.warn("Dashboard submissions index not ready, using fallback query.");
+              const fallbackQuery = query(
+                collection(db, "submissions"),
+                where("userId", "==", user.uid),
+                limit(200)
+              );
+              return await getDocs(fallbackQuery);
+            }
+            throw error;
+          }
+        };
+
+        const [userProblemsSnapshot, submissionsSnapshot, rankData] = await Promise.all([
+          getDocs(userProblemsQuery),
+          getSubmissionsSnapshot(),
+          getUserRank(user.uid).catch(() => null)
+        ]);
+
+        const userProblems = userProblemsSnapshot.docs.map((doc) => doc.data());
+        const submissions = submissionsSnapshot.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .sort((a, b) => {
+            const dateA = toDate(a.submittedAt)?.getTime() || 0;
+            const dateB = toDate(b.submittedAt)?.getTime() || 0;
+            return dateB - dateA;
+          });
+
+        const solved = userProblems.filter((problem) => problem.status === "Solved").length;
+        const attemptedFromProblems = userProblems.length;
+        const attemptedFromSubmissions = new Set(submissions.map((submission) => String(submission.problemId))).size;
+        const attempted = Math.max(attemptedFromProblems, attemptedFromSubmissions);
+        const streak = calculateDayStreak(submissions);
+
+        setStats({
+          solved,
+          attempted,
+          streak,
+          rank: rankData?.rank ?? null
+        });
+
+        const recent = submissions.slice(0, 3).map((submission) => {
+          const mappedProblem = problemMap[String(submission.problemId)];
+          return {
+            id: submission.id,
+            problem: mappedProblem?.title || `Problem ${submission.problemId}`,
+            status: submission.status,
+            time: formatRelativeTime(submission.submittedAt)
+          };
+        });
+
+        setRecentSubmissions(recent);
+      } catch (error) {
+        console.error("Error loading dashboard stats:", error);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    loadDashboardData();
   }, [user, router]);
 
   if (!user) {
@@ -25,14 +182,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-
-  // Mock user stats - in production, fetch from Firestore
-  const stats = {
-    solved: 12,
-    attempted: 25,
-    streak: 5,
-    rank: 1234
-  };
 
   const recentProblems = problems.slice(0, 5);
 
@@ -63,25 +212,25 @@ export default function DashboardPage() {
           <StatCard
             icon={<CheckCircle className="text-green-400" size={24} />}
             label="Problems Solved"
-            value={stats.solved}
+            value={statsLoading ? "..." : stats.solved}
             color="green"
           />
           <StatCard
             icon={<Code2 className="text-blue-400" size={24} />}
             label="Problems Attempted"
-            value={stats.attempted}
+            value={statsLoading ? "..." : stats.attempted}
             color="blue"
           />
           <StatCard
             icon={<TrendingUp className="text-orange-400" size={24} />}
             label="Day Streak"
-            value={stats.streak}
+            value={statsLoading ? "..." : stats.streak}
             color="orange"
           />
           <StatCard
             icon={<Award className="text-purple-400" size={24} />}
             label="Global Rank"
-            value={`#${stats.rank}`}
+            value={statsLoading ? "..." : stats.rank ? `#${stats.rank}` : "Unranked"}
             color="purple"
           />
         </div>
@@ -133,21 +282,18 @@ export default function DashboardPage() {
             </h2>
 
             <div className="space-y-4">
-              <SubmissionItem
-                problem="Order Book Implementation"
-                status="accepted"
-                time="2 hours ago"
-              />
-              <SubmissionItem
-                problem="VWAP Calculation"
-                status="wrong"
-                time="5 hours ago"
-              />
-              <SubmissionItem
-                problem="Market Making Strategy"
-                status="accepted"
-                time="1 day ago"
-              />
+              {recentSubmissions.length > 0 ? (
+                recentSubmissions.map((submission) => (
+                  <SubmissionItem
+                    key={submission.id}
+                    problem={submission.problem}
+                    status={submission.status}
+                    time={submission.time}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No submissions yet.</p>
+              )}
             </div>
 
             <Link
@@ -211,7 +357,8 @@ function StatCard({ icon, label, value, color }) {
 }
 
 function SubmissionItem({ problem, status, time }) {
-  const isAccepted = status === "accepted";
+  const normalizedStatus = String(status || "").toLowerCase();
+  const isAccepted = normalizedStatus === "accepted";
 
   return (
     <div className="flex items-start gap-3">

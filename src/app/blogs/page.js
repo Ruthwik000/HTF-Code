@@ -1,11 +1,34 @@
 "use client";
 
-import { blogs } from "@/data/blogs";
+import { useEffect, useState } from "react";
 import BlogCard from "@/components/BlogCard";
 import Link from "next/link";
-import { PenTool } from "lucide-react";
+import { Loader2, PenTool } from "lucide-react";
+import { getPublishedBlogs } from "@/lib/blogService";
 
 export default function BlogsPage() {
+    const [blogs, setBlogs] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const loadBlogs = async () => {
+            setLoading(true);
+            setError("");
+            try {
+                const blogData = await getPublishedBlogs(100);
+                setBlogs(blogData);
+            } catch (loadError) {
+                console.error("Error loading blogs:", loadError);
+                setError("Failed to load blogs.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadBlogs();
+    }, []);
+
     return (
         <div className="container mx-auto px-4 py-12 max-w-6xl">
             <div className="flex flex-col items-center justify-center text-center mb-12">
@@ -18,11 +41,31 @@ export default function BlogsPage() {
                 </Link>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {blogs.map(blog => (
-                    <BlogCard key={blog.id} blog={blog} />
-                ))}
-            </div>
+            {loading ? (
+                <div className="flex items-center justify-center py-16">
+                    <Loader2 className="animate-spin text-primary" size={32} />
+                </div>
+            ) : error ? (
+                <div className="text-center py-16">
+                    <p className="text-red-400">{error}</p>
+                </div>
+            ) : blogs.length === 0 ? (
+                <div className="text-center py-16 bg-card border border-border rounded-xl">
+                    <p className="text-muted-foreground mb-4">No blogs published yet.</p>
+                    <Link
+                        href="/blogs/create"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                        <PenTool size={14} /> Write the First Article
+                    </Link>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {blogs.map(blog => (
+                        <BlogCard key={blog.id} blog={blog} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

@@ -162,10 +162,14 @@ export default function RotatingEarth({ width = 800, height = 600, className = "
             try {
                 setIsLoading(true)
 
+                const landDataUrl =
+                    "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/master/110m/physical/ne_110m_land.json"
                 const response = await fetch(
-                    "https://raw.githubusercontent.com/martynafford/natural-earth-geojson/refs/heads/master/110m/physical/ne_110m_land.json",
+                    landDataUrl,
                 )
-                if (!response.ok) throw new Error("Failed to load land data")
+                if (!response.ok) {
+                    throw new Error(`Failed to load land data (${response.status} ${response.statusText})`)
+                }
 
                 landFeatures = await response.json()
 

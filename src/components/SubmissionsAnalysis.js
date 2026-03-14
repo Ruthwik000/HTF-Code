@@ -67,18 +67,42 @@ export default function SubmissionsAnalysis({ testResults, testCases, problemId,
     setLoading(true);
     try {
       const submissionsRef = collection(db, 'submissions');
-      const q = query(
-        submissionsRef,
-        where('userId', '==', user.uid),
-        where('problemId', '==', problemId),
-        orderBy('submittedAt', 'desc'),
-        limit(20)
-      );
-      
-      const snapshot = await getDocs(q);
+      let snapshot;
+
+      try {
+        const indexedQuery = query(
+          submissionsRef,
+          where('userId', '==', user.uid),
+          where('problemId', '==', problemId),
+          orderBy('submittedAt', 'desc'),
+          limit(20)
+        );
+        snapshot = await getDocs(indexedQuery);
+      } catch (error) {
+        // Fallback while composite index is still building
+        if (error?.code === 'failed-precondition' || String(error?.message || '').includes('index')) {
+          console.warn('Submissions index not ready, using fallback query.');
+          const fallbackQuery = query(
+            submissionsRef,
+            where('userId', '==', user.uid),
+            where('problemId', '==', problemId),
+            limit(100)
+          );
+          snapshot = await getDocs(fallbackQuery);
+        } else {
+          throw error;
+        }
+      }
+
       const subs = [];
       snapshot.forEach((doc) => {
         subs.push({ id: doc.id, ...doc.data() });
+      });
+
+      subs.sort((a, b) => {
+        const aTime = new Date(a.submittedAt?.toDate?.() || a.submittedAt || 0).getTime();
+        const bTime = new Date(b.submittedAt?.toDate?.() || b.submittedAt || 0).getTime();
+        return bTime - aTime;
       });
       
       setSubmissions(subs);

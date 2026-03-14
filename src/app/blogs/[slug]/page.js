@@ -1,17 +1,63 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, User, Calendar, Clock } from "lucide-react";
-import { blogs } from "@/data/blogs";
+import { ArrowLeft, User, Calendar, Clock, Loader2 } from "lucide-react";
+import { getBlogBySlug } from "@/lib/blogService";
 import TopicTag from "@/components/TopicTag";
 
 export default function BlogDetailPage() {
     const { slug } = useParams();
-    const blog = blogs.find(b => b.slug === slug);
+    const [blog, setBlog] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        const loadBlog = async () => {
+            setLoading(true);
+            setError("");
+            try {
+                const blogData = await getBlogBySlug(slug);
+                setBlog(blogData);
+            } catch (loadError) {
+                console.error("Error loading blog:", loadError);
+                setError("Failed to load blog.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (slug) {
+            loadBlog();
+        }
+    }, [slug]);
+
+    if (loading) {
+        return (
+            <div className="container mx-auto px-4 py-20 max-w-3xl">
+                <div className="flex items-center justify-center py-16">
+                    <Loader2 className="animate-spin text-primary" size={32} />
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="container mx-auto px-4 py-20 max-w-3xl">
+                <p className="text-center text-red-400">{error}</p>
+            </div>
+        );
+    }
 
     if (!blog) {
-        return <div className="p-20 text-center">Blog not found</div>;
+        return (
+            <div className="container mx-auto px-4 py-20 max-w-3xl text-center">
+                <p className="text-muted-foreground mb-4">Blog not found.</p>
+                <Link href="/blogs" className="text-primary hover:underline">Back to Blogs</Link>
+            </div>
+        );
     }
 
     return (

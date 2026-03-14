@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { ArrowLeft, Upload, Type, Hash, Link as LinkIcon } from "lucide-react";
 import { problems } from "@/data/problems";
+import { generatedProblems } from "@/data/generated100Problems";
+import { createBlogPost } from "@/lib/blogService";
+
+const allProblems = [...problems, ...generatedProblems];
 
 export default function CreateBlogPage() {
+    const { user } = useAuth();
+    const router = useRouter();
     const [formData, setFormData] = useState({
         title: "",
         description: "",
@@ -14,41 +22,36 @@ export default function CreateBlogPage() {
         linkedProblemId: ""
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [success, setSuccess] = useState(false);
+    const [error, setError] = useState("");
 
-    const handleSubmit = (e) => {
+    useEffect(() => {
+        if (!user) {
+            router.push("/login");
+        }
+    }, [user, router]);
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError("");
         setIsSubmitting(true);
 
-        // Mock API call
-        setTimeout(() => {
+        try {
+            const slug = await createBlogPost(formData, user);
+            router.push(`/blogs/${slug}`);
+        } catch (submitError) {
+            console.error("Error publishing blog:", submitError);
+            setError(submitError.message || "Failed to publish article.");
+        } finally {
             setIsSubmitting(false);
-            setSuccess(true);
-        }, 1500);
+        }
     };
 
-    if (success) {
+    if (!user) {
         return (
-            <div className="container mx-auto px-4 py-20 max-w-2xl text-center">
-                <div className="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Upload size={32} />
-                </div>
-                <h2 className="text-2xl font-bold mb-4">Article Published!</h2>
-                <p className="text-muted-foreground mb-8">
-                    Your insight has been successfully posted to the community board.
-                    <br />
-                    (This is a frontend demo - data was not actually saved)
-                </p>
-                <div className="flex gap-4 justify-center">
-                    <Link href="/blogs" className="px-6 py-2 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors">
-                        Back to Blogs
-                    </Link>
-                    <button onClick={() => setSuccess(false)} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-                        Write Another
-                    </button>
-                </div>
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
             </div>
-        )
+        );
     }
 
     return (
@@ -90,7 +93,7 @@ export default function CreateBlogPage() {
                         onChange={e => setFormData({ ...formData, linkedProblemId: e.target.value })}
                     >
                         <option value="">-- Content is general / not linked --</option>
-                        {problems.map(p => (
+                        {allProblems.map(p => (
                             <option key={p.id} value={p.id}>{p.title} ({p.difficulty})</option>
                         ))}
                     </select>
@@ -135,6 +138,12 @@ export default function CreateBlogPage() {
                         onChange={e => setFormData({ ...formData, content: e.target.value })}
                     />
                 </div>
+
+                {error && (
+                    <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+                        {error}
+                    </div>
+                )}
 
                 <div className="pt-4 flex justify-end">
                     <button
